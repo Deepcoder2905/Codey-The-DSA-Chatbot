@@ -462,8 +462,8 @@ def logout():
 @app.route('/api/topics', methods=['GET'])
 def get_topics():
     return jsonify(topics)
-
-genai.configure(api_key="AIzaSyCuv5PR6TN475s9m5pKFNLBy_z0cMA0Nx4")
+# Enter you gemini key below
+genai.configure(api_key="Your_gemini_key")
 
 generation_config = {
     "temperature": 1,
