@@ -1,4 +1,4 @@
-# Codey - The Intelligent DSA Learning Assistant
+# Codey - The Intelligent DSA Assistant
 
 ## Overview
 Codey is an AI-powered platform designed to help you master Data Structures and Algorithms (DSA) through interactive learning. The platform includes:
