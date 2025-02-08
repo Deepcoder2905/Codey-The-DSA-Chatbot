@@ -7,7 +7,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask import session
 import faiss
 import numpy as np
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
+
 import json
 import random
 
