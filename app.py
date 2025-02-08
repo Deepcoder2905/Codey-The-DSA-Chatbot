@@ -612,5 +612,3 @@ def get_chat_session_param(session_id):
 def fallback(path):
     return render_template('home.html')
 
-if __name__ == '__main__':
-    app.run(debug=True)
