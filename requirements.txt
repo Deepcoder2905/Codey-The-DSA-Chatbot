@@ -9,3 +9,4 @@ langchain-community==0.0.29
 pymupdf==1.24.0
 sentence-transformers==2.2.2
 python-dotenv==1.0.0
+gunicorn==20.1.0
