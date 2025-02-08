@@ -5,7 +5,7 @@ flask-login==0.6.3
 werkzeug==3.0.1
 faiss-cpu==1.7.4
 numpy==1.26.4
-langchain-community==0.0.29
+langchain-community==0.3.16
 pymupdf==1.24.0
 sentence-transformers==2.2.2
 python-dotenv==1.0.0
