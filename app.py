@@ -9,6 +9,10 @@ import faiss
 import numpy as np
 from langchain_huggingface import HuggingFaceEmbeddings
 from whitenoise import WhiteNoise
+from flask import jsonify, request
+from sqlalchemy.orm import joinedload
+from sqlalchemy.ext.mutable import MutableList
+from sqlalchemy import JSON
 
 import json
 import random
@@ -19,49 +23,53 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///data.sqlite3'
 app.config['SECRET_KEY'] = 'Deepubhai'
 app.config['SECURITY_PASSWORD_SALT'] = 'Deepu'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS']=False
+db = SQLAlchemy(app)
+login_manager = LoginManager(app)
+
+#Models
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    email = db.Column(db.String, unique=True, nullable=False)
+    password = db.Column(db.String(150), nullable=False)
+
+class ChatSession(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    conversation = db.Column(MutableList.as_mutable(JSON), default=list)  # Changed to use MutableList
+
+
+class UserAttempt(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False)
+    problem = db.Column(db.String(255), nullable=False)
+    attempted = db.Column(db.Boolean, default=False)
+
+class Problem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    topic = db.Column(db.String(255))
+    problem = db.Column(db.String(255))
+    link = db.Column(db.String(255))
+
+with app.app_context():
+    db.create_all()
+
 topics = [
     {"name": "Problems", "description": "Explore various algorithmic problems to practice and improve."},
     {"name": "Notes", "description": "Access detailed notes on different DSA concepts."},
     {"name": "Playlists", "description": "View curated playlists to enhance your learning experience."}
 ]
 
+@app.route('/')
+def index():
+    return render_template('home.html')
 
-# embeddings = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
-# def load_dsa_problems():
-#     """Load DSA problems from JSON file"""
-#     with open('dsa_problems.json', 'r') as f:
-#         return json.load(f)
 
-# def load_faiss_index():
-#     """Load FAISS index and documents"""
-#     index = faiss.read_index("faiss_index.bin")
-#     with open("documents.txt", "r", encoding="utf-8") as f:
-#         documents = f.read().split("\n\n")
-#     return index, documents
-
-# def retrieve_relevant_context(question, top_k=3):
-#     query_embedding = embeddings.encode([question])
-#     faiss_index, documents = load_faiss_index()
-#     D, I = faiss_index.search(query_embedding, top_k)
-    
-#     retrieved_docs = []
-#     for i in I[0]:
-#         if 0 <= i < len(documents):
-#             retrieved_docs.append(documents[i])
-    
-#     return "\n\n".join(retrieved_docs) if retrieved_docs else "No relevant context found."
-
-# def get_problem_state(session_id):
-#     """Get or initialize problem state for the session"""
-#     if 'problem_state' not in session:
-#         session['problem_state'] = {
-#             'current_problem': None,
-#             'hints_given': 0,
-#             'solution_shown': False,
-#             'test_cases_shown': False
-#         }
-#     return session['problem_state']
+# The RAG implemnetation of Problem solver chatbot
 faiss_index = faiss.read_index("faiss_index.bin")
 with open("qa_pairs.json", "r", encoding="utf-8") as f:
     qa_list = json.load(f)
@@ -75,113 +83,6 @@ def get_problem_state():
             'qa_index': None         # the index in qa_list for the active problem
         }
     return session['problem_state']
-
-# @app.route('/api/chatbot1', methods=['POST'])
-# def chatbot1():
-#     try:
-#         data = request.json
-#         action = data.get('action', 'question')
-#         user_input = data.get('question', '').strip()
-#         code = data.get('code', '')
-#         user_id = session.get('user_id')
-
-#         if not user_id:
-#             return jsonify({"error": "User not logged in"}), 401
-
-#         problem_state = get_problem_state(session.get('id'))
-#         dsa_problems = load_dsa_problems()
-#         if action == 'start':
-#             retrieved_text = retrieve_relevant_context("DSA problem statement")
-#             # Find matching problem in dataset
-#             problem = next((p for p in dsa_problems if p['problem_statement'] in retrieved_text), None)
-            
-#             if not problem:
-#                 return jsonify({"error": "No relevant problem found"}), 400
-
-#             # Initialize problem state with full data
-#             problem_state.update({
-#                 'current_problem': problem,
-#                 'hints_given': 0,
-#                 'solution_shown': False,
-#                 'test_cases_shown': False
-#             })
-            
-#             system_instruction = "Present this DSA problem clearly:"
-#             context = problem['problem_statement']
-#         elif action == 'hint':
-#             if not problem_state['current_problem']:
-#                 return jsonify({"error": "No active problem"}), 400
-                
-#             system_instruction = (
-#                 "You are a DSA tutor bot providing a hint. "
-#                 f"This is hint number {problem_state['hints_given'] + 1}. "
-#                 "Provide a helpful hint without giving away the complete solution."
-#             )
-#             context = problem_state['current_problem']['hints'][problem_state['hints_given']]
-#             problem_state['hints_given'] += 1
-            
-#         elif action == 'test_cases':
-#             if not problem_state['current_problem']:
-#                 return jsonify({"error": "No active problem"}), 400
-                
-#             system_instruction = (
-#                 "You are a DSA tutor bot providing test cases. "
-#                 "Present test cases clearly with inputs and expected outputs."
-#             )
-#             context = problem_state['current_problem']['test_cases']
-#             problem_state['test_cases_shown'] = True
-            
-#         elif action == 'solution':
-#             if not problem_state['current_problem']:
-#                 return jsonify({"error": "No active problem"}), 400
-                
-#             system_instruction = (
-#                 "You are a DSA tutor bot providing the solution. "
-#                 "Explain the solution clearly with step-by-step reasoning."
-#             )
-#             context = problem_state['current_problem']['solution']
-#             problem_state['solution_shown'] = True
-            
-#         elif action == 'run_code':
-#             if not problem_state['current_problem']:
-#                 return jsonify({"error": "No active problem"}), 400
-                
-#             system_instruction = (
-#                 "You are a DSA tutor bot reviewing code. "
-#                 "Check for correctness, efficiency, and provide specific feedback. "
-#                 "If there are errors, explain them and suggest improvements."
-#             )
-#             context = f"""
-#             Problem: {problem_state['current_problem']['problem_statement']}
-#             Student's Code: {code}
-#             Test Cases: {problem_state['current_problem']['test_cases']}
-#             """
-            
-#         else: 
-#             system_instruction = (
-#                 "You are a DSA tutor bot. "
-#                 "Answer the student's question clearly and helpfully. "
-#                 "If they're stuck, encourage them to try a hint first."
-#             )
-#             context = retrieve_relevant_context(user_input)
-
-#         prompt = f"""System Instruction: {system_instruction}
-        
-#         Context: {context}
-        
-#         User: {user_input}
-        
-#         Assistant:"""
-        
-#         response = chat_session.send_message(prompt)
-#         chatbot_response = response.text
-
-#         session.modified = True
-#         return jsonify({"response": chatbot_response})
-        
-#     except Exception as e:
-#         app.logger.error(f"Error in chatbot1: {str(e)}", exc_info=True)
-#         return jsonify({"error": "Internal server error"}), 500
 @app.route('/api/chatbot1', methods=['POST'])
 def chatbot1():
     try:
@@ -255,11 +156,11 @@ def chatbot1():
             
             # Use a fixed instruction and context for test cases.
             system_instruction = (
-        "You are a DSA tutor. Provide a set of test cases for the problem in a format similar to LeetCode. "
-        "For each test case, list the Input and Expected Output. "
-        "Be sure to include edge cases and typical cases. "
-        "Format the answer clearly and succinctly."
-    )
+                "You are a DSA tutor. Provide a set of test cases for the problem in a format similar to LeetCode. "
+                "For each test case, list the Input and Expected Output. "
+                "Be sure to include edge cases and typical cases. "
+                "Format the answer clearly and succinctly."
+            )
             # You could either use a static response or a predetermined text here.
             context = "Test cases: Consider the edge cases, such as the smallest input (e.g., 0 or 1) and the largest possible input based on the problem constraints."
     
@@ -270,10 +171,10 @@ def chatbot1():
             
             system_instruction = "You are a DSA tutor reviewing the student's code. Provide feedback."
             context = f"""
-Problem: {problem_state.get('current_question')}
-Student's Code: {code}
-Expected: Consider edge cases.
-"""
+            Problem: {problem_state.get('current_question')}
+            Student's Code: {code}
+            Expected: Consider edge cases.
+            """
         else:
             # Default generic answer using system instructions only.
             system_instruction = "You are a DSA tutor. Answer the student's question."
@@ -281,11 +182,11 @@ Expected: Consider edge cases.
 
         prompt = f"""System Instruction: {system_instruction}
 
-Context: {context}
-
-User: {user_input}
-
-Assistant:"""
+        Context: {context}
+        
+        User: {user_input}
+        
+        Assistant:"""
         
         # Here we assume that chat_session.send_message() is the function that sends the prompt to your language model.
         response = chat_session.send_message(prompt)
@@ -296,49 +197,6 @@ Assistant:"""
     except Exception as e:
         app.logger.error(f"Error in chatbot1: {str(e)}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
-@app.route('/')
-def index():
-    return render_template('home.html')
-
-db = SQLAlchemy(app)
-login_manager = LoginManager(app)
-
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(150), unique=True, nullable=False)
-    email = db.Column(db.String, unique=True, nullable=False)
-    password = db.Column(db.String(150), nullable=False)
-    
-from sqlalchemy.ext.mutable import MutableList
-from sqlalchemy import JSON
-
-class ChatSession(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    conversation = db.Column(MutableList.as_mutable(JSON), default=list)  # Changed to use MutableList
-
-
-class UserAttempt(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, nullable=False)
-    problem = db.Column(db.String(255), nullable=False)
-    attempted = db.Column(db.Boolean, default=False)
-
-class Problem(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    topic = db.Column(db.String(255))
-    problem = db.Column(db.String(255))
-    link = db.Column(db.String(255))
-
-with app.app_context():
-    db.create_all()
-
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
-
-from flask import jsonify, request
-from sqlalchemy.orm import joinedload
 
 @app.route('/api/problems', methods=['GET'])
 def get_problems():
@@ -465,6 +323,7 @@ def logout():
 @app.route('/api/topics', methods=['GET'])
 def get_topics():
     return jsonify(topics)
+
 # Enter you gemini key below
 genai.configure(api_key="Your_gemini_key")
 
@@ -609,7 +468,6 @@ def get_chat_session_param(session_id):
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
-# Fallback route for SPA (Single Page Application)
 @app.route('/<path:path>')
 def fallback(path):
     return render_template('home.html')
