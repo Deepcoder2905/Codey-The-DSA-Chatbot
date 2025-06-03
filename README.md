@@ -46,7 +46,6 @@ Codey is an AI-powered platform designed to help you master Data Structures and 
 
 ```bash
 │   app.py
-│   Codey.zip
 │   DSA.pdf
 │   faiss_index.bin
 │   index_pdf.py
