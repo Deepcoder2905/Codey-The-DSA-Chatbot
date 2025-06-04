@@ -8,7 +8,6 @@ from flask import session
 import faiss
 import numpy as np
 from langchain_huggingface import HuggingFaceEmbeddings
-from whitenoise import WhiteNoise
 from flask import jsonify, request
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.mutable import MutableList
@@ -18,7 +17,6 @@ import json
 import random
 
 app = Flask(__name__,static_folder="static", template_folder="templates")
-app.wsgi_app = WhiteNoise(app.wsgi_app, root='static/')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///data.sqlite3'
 app.config['SECRET_KEY'] = 'Deepubhai'
 app.config['SECURITY_PASSWORD_SALT'] = 'Deepu'
